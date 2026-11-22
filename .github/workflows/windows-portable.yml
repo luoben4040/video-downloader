@@ -35,6 +35,7 @@ jobs:
         run: |
           npm ci
           python -m venv .venv
+          '.venv/Scripts' | Resolve-Path | ForEach-Object { $_.Path } | Out-File -Append -Encoding ascii $env:GITHUB_PATH
           .\.venv\Scripts\python -m pip install -r python-engine/requirements-dev.txt
       - name: Verify pinned parser slice
         run: python scripts/update_dtk_vendor.py --check
