@@ -55,11 +55,13 @@ jobs:
           Copy-Item python-engine/dist/video-engine $root -Recurse
           Copy-Item vendor/transcription-licenses.txt, vendor/telegram-storage-licenses.txt "$root/licenses/"
           if (-not (Test-Path "$root/video-engine/video-engine.exe")) { throw 'engine missing' }
-          @'
-解压整个 Yingqu 文件夹后运行 yingqu.exe。配置、Cookie、登录数据和下载文件都在这个文件夹里，请整夹复制。
-本机需要已安装 Microsoft Edge WebView2（Windows 11 自带）。此包不包含 Telegram 应用身份，Telegram 备份不可用。
-应用内“安装更新”不会替换这个随身文件夹。
-'@ | Set-Content -Encoding utf8 "$root/README.txt"
+          @(
+            '解压整个 Yingqu 文件夹后运行 yingqu.exe，请整夹复制。',
+            '配置、Cookie、登录数据和下载文件都在这个文件夹里。',
+            '本机需要已安装 Microsoft Edge WebView2，Windows 11 自带。',
+            '此包不包含 Telegram 应用身份，Telegram 备份不可用。',
+            '应用内安装更新不会替换这个随身文件夹。'
+          ) | Set-Content -Encoding utf8 "$root/README.txt"
           tar -a -c -f portable/Yingqu-windows-x64-portable.zip -C portable Yingqu
       - uses: actions/upload-artifact@v7
         with:
