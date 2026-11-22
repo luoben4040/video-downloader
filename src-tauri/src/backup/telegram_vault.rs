@@ -43,28 +43,71 @@ pub(super) trait SessionVault: Send + Sync {
 pub(super) struct SystemSessionVault;
 impl SessionVault for SystemSessionVault {
     fn read(&self, key: &str) -> Result<Option<Zeroizing<String>>> {
-        match keyring::Entry::new(SERVICE, key)
-            .context("TELEGRAM_SESSION_STORAGE")?
-            .get_password()
+        #[cfg(feature = "portable")]
         {
-            Ok(value) => Ok(Some(Zeroizing::new(value))),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(_) => bail!("TELEGRAM_SESSION_STORAGE"),
+            return match crate::portable::read_secret(
+                &crate::portable::data_dir().context("TELEGRAM_SESSION_STORAGE")?,
+                SERVICE,
+                key,
+            )
+            .context("TELEGRAM_SESSION_STORAGE")?
+            {
+                Some(bytes) => Ok(Some(Zeroizing::new(
+                    String::from_utf8(bytes).context("TELEGRAM_SESSION_STORAGE")?,
+                ))),
+                None => Ok(None),
+            };
+        }
+        #[cfg(not(feature = "portable"))]
+        {
+            match keyring::Entry::new(SERVICE, key)
+                .context("TELEGRAM_SESSION_STORAGE")?
+                .get_password()
+            {
+                Ok(value) => Ok(Some(Zeroizing::new(value))),
+                Err(keyring::Error::NoEntry) => Ok(None),
+                Err(_) => bail!("TELEGRAM_SESSION_STORAGE"),
+            }
         }
     }
     fn write(&self, key: &str, value: &str) -> Result<()> {
-        keyring::Entry::new(SERVICE, key)
-            .context("TELEGRAM_SESSION_STORAGE")?
-            .set_password(value)
-            .map_err(|_| anyhow::anyhow!("TELEGRAM_SESSION_STORAGE"))
+        #[cfg(feature = "portable")]
+        {
+            return crate::portable::write_secret(
+                &crate::portable::data_dir().context("TELEGRAM_SESSION_STORAGE")?,
+                SERVICE,
+                key,
+                value.as_bytes(),
+            )
+            .context("TELEGRAM_SESSION_STORAGE");
+        }
+        #[cfg(not(feature = "portable"))]
+        {
+            keyring::Entry::new(SERVICE, key)
+                .context("TELEGRAM_SESSION_STORAGE")?
+                .set_password(value)
+                .map_err(|_| anyhow::anyhow!("TELEGRAM_SESSION_STORAGE"))
+        }
     }
     fn delete(&self, key: &str) -> Result<()> {
-        match keyring::Entry::new(SERVICE, key)
-            .context("TELEGRAM_SESSION_STORAGE")?
-            .delete_credential()
+        #[cfg(feature = "portable")]
         {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(_) => bail!("TELEGRAM_SESSION_STORAGE"),
+            return crate::portable::delete_secret(
+                &crate::portable::data_dir().context("TELEGRAM_SESSION_STORAGE")?,
+                SERVICE,
+                key,
+            )
+            .context("TELEGRAM_SESSION_STORAGE");
+        }
+        #[cfg(not(feature = "portable"))]
+        {
+            match keyring::Entry::new(SERVICE, key)
+                .context("TELEGRAM_SESSION_STORAGE")?
+                .delete_credential()
+            {
+                Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+                Err(_) => bail!("TELEGRAM_SESSION_STORAGE"),
+            }
         }
     }
 }

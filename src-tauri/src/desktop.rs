@@ -1083,8 +1083,14 @@ async fn open_update_installer(
     downloads: State<'_, Arc<UpdateDownloads>>,
     download_id: String,
 ) -> Result<(), String> {
+    #[cfg(feature = "portable")]
+    {
+        let _ = (app, downloads, download_id);
+        return Err("PORTABLE_UPDATE_UNSUPPORTED".into());
+    }
+    #[cfg(not(feature = "portable"))]
     let path = downloads.installer_path(&download_id).await?;
-    #[cfg(windows)]
+    #[cfg(all(windows, not(feature = "portable")))]
     {
         if app
             .state::<DesktopLifecycle>()
@@ -1097,7 +1103,7 @@ async fn open_update_installer(
         request_exit(&app);
         Ok(())
     }
-    #[cfg(not(windows))]
+    #[cfg(all(not(windows), not(feature = "portable")))]
     app.opener()
         .open_path(path.to_string_lossy(), None::<&str>)
         .map_err(|_| "UPDATE_INSTALLER_OPEN_FAILED".into())
@@ -1142,12 +1148,18 @@ fn cancel_runtime_dependency(core: State<AppCore>) -> Result<(), String> {
     core.cancel_dependency().map_err(error)
 }
 fn initialize_desktop(app: &tauri::AppHandle) -> anyhow::Result<(AppCore, Arc<UpdateDownloads>)> {
-    let data = app.path().app_data_dir()?;
-    // Preserve the existing database when adopting the new bundle identifier.
-    let legacy = data.with_file_name("com.yingqu.desktop");
-    if !data.exists() && legacy.join("yingqu.sqlite").is_file() {
-        std::fs::rename(&legacy, &data)?;
-    }
+    #[cfg(feature = "portable")]
+    let data = yingqu_core::portable::data_dir()?;
+    #[cfg(not(feature = "portable"))]
+    let data = {
+        let data = app.path().app_data_dir()?;
+        // Preserve the existing database when adopting the new bundle identifier.
+        let legacy = data.with_file_name("com.yingqu.desktop");
+        if !data.exists() && legacy.join("yingqu.sqlite").is_file() {
+            std::fs::rename(&legacy, &data)?;
+        }
+        data
+    };
     std::fs::create_dir_all(&data)?;
     let update_handle = app.clone();
     let updates = UpdateDownloads::new(
@@ -1157,7 +1169,12 @@ fn initialize_desktop(app: &tauri::AppHandle) -> anyhow::Result<(AppCore, Arc<Up
             let _ = update_handle.emit("update_download", status);
         },
     );
+    #[cfg(feature = "portable")]
+    let downloads = yingqu_core::portable::download_dir()?;
+    #[cfg(not(feature = "portable"))]
     let downloads = app.path().download_dir()?.join("Yingqu");
+    #[cfg(feature = "portable")]
+    std::fs::create_dir_all(&downloads)?;
     #[cfg(debug_assertions)]
     let engine_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()

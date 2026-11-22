@@ -8,6 +8,7 @@ default-run = "yingqu"
 [features]
 desktop = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-dialog", "dep:tauri-plugin-opener", "dep:tauri-plugin-single-instance", "dep:tauri-plugin-clipboard-manager"]
 probe = []
+portable = []
 
 [build-dependencies]
 serde_json = "1"

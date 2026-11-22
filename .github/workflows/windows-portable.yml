@@ -1,0 +1,81 @@
+name: Windows portable
+
+on:
+  push:
+    branches:
+      - portable
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Install dependencies
+        run: |
+          npm ci
+          python -m venv .venv
+          .\.venv\Scripts\python -m pip install -r python-engine/requirements-dev.txt
+      - name: Verify pinned parser slice
+        run: python scripts/update_dtk_vendor.py --check
+      - name: Build CPU speech helper
+        run: python scripts/build_asr.py
+      - name: Package engine
+        run: python -m PyInstaller --noconfirm --distpath python-engine/dist --workpath python-engine/build python-engine/pyinstaller.spec
+      - name: Build portable desktop
+        run: |
+          node scripts/check-desktop-engine.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run tauri -- build --features desktop,portable --config src-tauri/tauri.portable.conf.json --no-bundle -- --locked
+      - name: Zip portable folder
+        run: |
+          $root = 'portable/Yingqu'
+          New-Item -ItemType Directory -Force "$root/licenses" | Out-Null
+          Copy-Item src-tauri/target/release/yingqu.exe $root
+          Copy-Item python-engine/dist/video-engine $root -Recurse
+          Copy-Item vendor/transcription-licenses.txt, vendor/telegram-storage-licenses.txt "$root/licenses/"
+          if (-not (Test-Path "$root/video-engine/video-engine.exe")) { throw 'engine missing' }
+          @'
+解压整个 Yingqu 文件夹后运行 yingqu.exe。配置、Cookie、登录数据和下载文件都在这个文件夹里，请整夹复制。
+本机需要已安装 Microsoft Edge WebView2（Windows 11 自带）。此包不包含 Telegram 应用身份，Telegram 备份不可用。
+应用内“安装更新”不会替换这个随身文件夹。
+'@ | Set-Content -Encoding utf8 "$root/README.txt"
+          tar -a -c -f portable/Yingqu-windows-x64-portable.zip -C portable Yingqu
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Yingqu-windows-x64-portable
+          path: portable/Yingqu-windows-x64-portable.zip
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish rolling release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Continue'
+          gh release view windows-portable *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release delete windows-portable --yes --cleanup-tag
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          gh release create windows-portable portable/Yingqu-windows-x64-portable.zip --target ${{ github.sha }} --latest=false --title "映取 Windows 随身版" --notes "解压整个 Yingqu 文件夹后运行 yingqu.exe。配置和下载都在该文件夹内。不包含 Telegram 应用身份。"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

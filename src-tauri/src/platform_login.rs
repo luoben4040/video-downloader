@@ -258,6 +258,12 @@ fn build_login_window(
     let url = if clear { "about:blank" } else { site.login_url }
         .parse()
         .map_err(|_| "PLATFORM_LOGIN_WINDOW_FAILED")?;
+    #[cfg(feature = "portable")]
+    let directory = yingqu_core::portable::data_dir()
+        .map_err(|_| "PLATFORM_LOGIN_WINDOW_FAILED")?
+        .join("platform-browser")
+        .join(platform);
+    #[cfg(not(feature = "portable"))]
     let directory = app
         .path()
         .app_local_data_dir()

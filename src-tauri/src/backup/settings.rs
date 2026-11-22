@@ -24,26 +24,64 @@ pub trait Vault {
 pub struct SystemVault;
 impl Vault for SystemVault {
     fn read(&self, r: &str) -> Result<Zeroizing<String>> {
-        Ok(Zeroizing::new(
-            keyring::Entry::new("com.yingqu.desktop.backup", r)
-                .context("CREDENTIAL_ERROR")?
-                .get_password()
-                .map_err(|_| anyhow::anyhow!("CREDENTIAL_ERROR"))?,
-        ))
+        #[cfg(feature = "portable")]
+        {
+            let bytes = crate::portable::read_secret(
+                &crate::portable::data_dir()?,
+                "com.yingqu.desktop.backup",
+                r,
+            )?
+            .context("CREDENTIAL_ERROR")?;
+            return Ok(Zeroizing::new(
+                String::from_utf8(bytes).context("CREDENTIAL_ERROR")?,
+            ));
+        }
+        #[cfg(not(feature = "portable"))]
+        {
+            Ok(Zeroizing::new(
+                keyring::Entry::new("com.yingqu.desktop.backup", r)
+                    .context("CREDENTIAL_ERROR")?
+                    .get_password()
+                    .map_err(|_| anyhow::anyhow!("CREDENTIAL_ERROR"))?,
+            ))
+        }
     }
     fn write(&self, r: &str, v: &str) -> Result<()> {
-        keyring::Entry::new("com.yingqu.desktop.backup", r)
-            .context("CREDENTIAL_ERROR")?
-            .set_password(v)
-            .map_err(|_| anyhow::anyhow!("CREDENTIAL_ERROR"))
+        #[cfg(feature = "portable")]
+        {
+            return crate::portable::write_secret(
+                &crate::portable::data_dir()?,
+                "com.yingqu.desktop.backup",
+                r,
+                v.as_bytes(),
+            );
+        }
+        #[cfg(not(feature = "portable"))]
+        {
+            keyring::Entry::new("com.yingqu.desktop.backup", r)
+                .context("CREDENTIAL_ERROR")?
+                .set_password(v)
+                .map_err(|_| anyhow::anyhow!("CREDENTIAL_ERROR"))
+        }
     }
     fn delete(&self, r: &str) -> Result<()> {
-        match keyring::Entry::new("com.yingqu.desktop.backup", r)
-            .context("CREDENTIAL_ERROR")?
-            .delete_credential()
+        #[cfg(feature = "portable")]
         {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(_) => bail!("CREDENTIAL_ERROR"),
+            return crate::portable::delete_secret(
+                &crate::portable::data_dir()?,
+                "com.yingqu.desktop.backup",
+                r,
+            );
+        }
+        #[cfg(not(feature = "portable"))]
+        {
+            match keyring::Entry::new("com.yingqu.desktop.backup", r)
+                .context("CREDENTIAL_ERROR")?
+                .delete_credential()
+            {
+                Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+                Err(_) => bail!("CREDENTIAL_ERROR"),
+            }
         }
     }
 }

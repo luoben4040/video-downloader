@@ -25,8 +25,10 @@ pub fn configure() {
             .get("api_hash")
             .and_then(|v| v.as_str().map(String::from));
     }
+    // Portable builds are distributed without a Telegram application identity.
     let desktop_release = env::var_os("CARGO_FEATURE_DESKTOP").is_some()
-        && env::var("PROFILE").as_deref() != Ok("debug");
+        && env::var("PROFILE").as_deref() != Ok("debug")
+        && env::var_os("CARGO_FEATURE_PORTABLE").is_none();
     if desktop_release {
         let valid_id = id
             .as_deref()

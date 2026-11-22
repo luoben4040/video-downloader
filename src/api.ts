@@ -420,6 +420,7 @@ const errors: Record<string, string> = {
   UPDATE_NEWER_INSTALLER_CACHED: '本地已缓存更高版本安装包，请重新检查更新',
   UPDATE_INSTALLER_MISSING: '安装包已移动或删除，请重新下载',
   UPDATE_INSTALLER_OPEN_FAILED: '无法打开安装包，请稍后重试',
+  PORTABLE_UPDATE_UNSUPPORTED: '随身版请整夹替换新的解压目录，不会安装系统安装包',
   INVALID_INPUT: '请粘贴支持平台的作品分享链接',
   UNSUPPORTED_PLATFORM: '请粘贴支持平台的作品分享链接',
   FFPROBE_UNAVAILABLE: '读取视频属性需要 FFprobe，请在系统设置的运行依赖中安装 FFmpeg。',

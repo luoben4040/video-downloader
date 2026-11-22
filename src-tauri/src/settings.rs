@@ -77,10 +77,62 @@ fn valid_chunk_size(value: u64) -> bool {
     value == 0 || (1_048_576..=1_073_741_824).contains(&value) && value.is_multiple_of(1_048_576)
 }
 
+#[cfg(not(feature = "portable"))]
 fn entry(reference: &str) -> Result<keyring::Entry> {
     // This persistent credential namespace predates the bundle identifier change.
     // Keep it stable so existing authenticated proxy secrets remain accessible.
     keyring::Entry::new("com.yingqu.desktop", reference).context("CREDENTIAL_ERROR")
+}
+
+fn proxy_secret(reference: &str) -> Result<Vec<u8>> {
+    #[cfg(feature = "portable")]
+    {
+        return crate::portable::read_secret(
+            &crate::portable::data_dir()?,
+            "com.yingqu.desktop",
+            reference,
+        )?
+        .context("CREDENTIAL_ERROR");
+    }
+    #[cfg(not(feature = "portable"))]
+    {
+        Ok(entry(reference)?.get_secret().context("CREDENTIAL_ERROR")?)
+    }
+}
+
+fn store_proxy_secret(reference: &str, value: &str) -> Result<()> {
+    #[cfg(feature = "portable")]
+    {
+        return crate::portable::write_secret(
+            &crate::portable::data_dir()?,
+            "com.yingqu.desktop",
+            reference,
+            value.as_bytes(),
+        );
+    }
+    #[cfg(not(feature = "portable"))]
+    {
+        entry(reference)?
+            .set_secret(value.as_bytes())
+            .context("CREDENTIAL_ERROR")
+    }
+}
+
+fn delete_proxy_secret(reference: &str) -> Result<()> {
+    #[cfg(feature = "portable")]
+    {
+        return crate::portable::delete_secret(
+            &crate::portable::data_dir()?,
+            "com.yingqu.desktop",
+            reference,
+        );
+    }
+    #[cfg(not(feature = "portable"))]
+    {
+        entry(reference)?
+            .delete_credential()
+            .context("CREDENTIAL_ERROR")
+    }
 }
 
 pub(crate) fn init(db: &rusqlite::Transaction<'_>) -> Result<()> {
@@ -346,8 +398,7 @@ pub fn proxy(settings: &Settings, platform: &str) -> Result<Option<String>> {
 pub(crate) fn profile_proxy(profile: &Profile) -> Result<Option<String>> {
     match &profile.credential_ref {
         Some(reference) => Ok(Some(
-            String::from_utf8(entry(reference)?.get_secret().context("CREDENTIAL_ERROR")?)
-                .context("CREDENTIAL_ERROR")?,
+            String::from_utf8(proxy_secret(reference)?).context("CREDENTIAL_ERROR")?,
         )),
         None => Ok(profile.proxy.clone()),
     }
@@ -655,9 +706,7 @@ pub fn save_profile(db: &Connection, settings: &mut Settings, update: ProfileUpd
             let (mut parsed, port) = parse_proxy(&update.platform, &proxy)?;
             if !parsed.username().is_empty() || parsed.password().is_some() {
                 let id = Uuid::new_v4().to_string();
-                entry(&id)?
-                    .set_secret(proxy.as_bytes())
-                    .context("CREDENTIAL_ERROR")?;
+                store_proxy_secret(&id, &proxy)?;
                 reference = Some(id.clone());
                 new_credential = Some(id);
             }
@@ -693,7 +742,7 @@ pub fn save_profile(db: &Connection, settings: &mut Settings, update: ProfileUpd
     );
     if saved.is_err() {
         if let Some(id) = new_credential {
-            let _ = entry(&id)?.delete_credential();
+            let _ = delete_proxy_secret(&id);
         }
         bail!("DATABASE_ERROR");
     }
@@ -713,9 +762,7 @@ pub fn save_profile(db: &Connection, settings: &mut Settings, update: ProfileUpd
         http_chunk_size,
     };
     if let Some(old) = old_reference.filter(|old| Some(old) != reference.as_ref()) {
-        entry(&old)?
-            .delete_credential()
-            .context("CREDENTIAL_CLEANUP_ERROR")?;
+        delete_proxy_secret(&old).context("CREDENTIAL_CLEANUP_ERROR")?;
     }
     Ok(())
 }

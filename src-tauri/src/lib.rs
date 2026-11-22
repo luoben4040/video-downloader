@@ -6,6 +6,7 @@ pub mod files;
 mod local_media;
 pub mod naming;
 pub mod parse_cache;
+pub mod portable;
 pub mod python_bridge;
 pub mod resolve_progress;
 pub mod runtime_dependencies;
